@@ -19,10 +19,13 @@ import torch.sparse
 import torch.testing
 import torch.utils.backcompat
 from torch._tensor_str import set_printoptions
-from torch.random import get_rng_state, initial_seed, manual_seed, set_rng_state
+from torch.random import get_rng_state, initial_seed, set_rng_state
 from torch.storage import _StorageBase
 from torch.tensor import Tensor as TensorBase
 from torch.utils.hooks import RemovableHandle
+
+
+def manual_seed(seed: builtins.int) -> None: ...
 
 
 def load(f: Union[str, IO],
