@@ -107,6 +107,9 @@ class PositionEmbedder(EmbedderBase):
         hparams["name"] = "position_embedder"
         return hparams
 
+    def extra_repr(self) -> str:
+        return f"position_size={self.position_size}, embedding_dim={self.dim}"
+
     def forward(self,  # type: ignore
                 positions: Optional[torch.LongTensor] = None,
                 sequence_length: Optional[torch.LongTensor] = None, **kwargs):
@@ -292,6 +295,9 @@ class SinusoidsPositionEmbedder(EmbedderBase):
             'name': 'sinusoid_position_embedder',
         }
 
+    def extra_repr(self) -> str:
+        return f"embedding_dim={self.dim}"
+
     def _compute_embeddings(self, positions: torch.Tensor,
                             inv_timescales: torch.Tensor) -> torch.Tensor:
         scaled_time = (positions.type_as(inv_timescales).view(-1, 1) *
@@ -351,9 +357,11 @@ class SinusoidsPositionEmbedder(EmbedderBase):
         return outputs
 
     @property
+    def dim(self):
+        r"""The embedding dimension.
+        """
+        return self._dim
+
+    @property
     def output_size(self) -> int:
-        if isinstance(self._dim, (list, tuple)):
-            dim = self._dim[-1]
-        else:
-            dim = self._dim
-        return dim
+        return self._dim
