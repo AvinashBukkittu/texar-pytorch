@@ -2,6 +2,8 @@ pickle_data_dir = "data/MRPC"
 max_seq_length = 128
 num_classes = 2
 num_train_data = 3668
+
+# used for bert executor example
 max_batch_tokens = 128
 
 train_batch_size = 32

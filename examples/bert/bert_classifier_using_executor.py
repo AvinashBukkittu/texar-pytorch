@@ -11,8 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Example of building a sentence classifier using Texar's Executor based on
-pre-trained BERT model.
+
+"""Example of building a sentence classifier on top of pre-trained BERT using
+Texar's Executor.
 """
 
 import argparse
@@ -21,7 +22,9 @@ import importlib
 import logging
 import sys
 from pathlib import Path
-from typing import Dict
+import tempfile
+import os
+from typing import Dict, Optional, List
 
 import torch
 from torch import nn
@@ -95,20 +98,52 @@ class ModelWrapper(nn.Module):
 
         input_length = (1 - (input_ids == 0).int()).sum(dim=1)
 
-        logits, _ = self.model(input_ids, input_length, segment_ids)
+        logits, preds = self.model(input_ids, input_length, segment_ids)
 
         loss = self._compute_loss(logits, labels)
 
-        return {"loss": loss}
+        return {"loss": loss, "preds": preds}
 
     def predict(self, batch: tx.data.Batch) -> Dict[str, torch.Tensor]:
-        predictions = self.model(encoder_input=batch.source,
-                                 beam_width=self.beam_width)
-        if self.beam_width == 1:
-            decoded_ids = predictions[0].sample_id
-        else:
-            decoded_ids = predictions["sample_id"][:, :, 0]
-        return {"preds": decoded_ids}
+        input_ids = batch["input_ids"]
+        segment_ids = batch["segment_ids"]
+
+        input_length = (1 - (input_ids == 0).int()).sum(dim=1)
+
+        _, preds = self.model(input_ids, input_length, segment_ids)
+
+        return {"preds": preds}
+
+
+class FileWriterMetric(metric.SimpleMetric[List[int], float]):
+    def __init__(self, vocab: tx.data.Vocab,
+                 file_path: Optional[str] = None):
+        super().__init__(pred_name="preds", label_name="input_ids")
+        self.vocab = vocab
+        self.file_path = file_path
+
+    @property
+    def metric_name(self) -> str:
+        return "FileWriter"
+
+    def _to_str(self, tokens: List[int]) -> str:
+        pos = next((idx for idx, x in enumerate(tokens)
+                    if x == self.vocab.pad_token_id), -1)
+        if pos != -1:
+            tokens = tokens[:pos]
+        vocab_map = self.vocab.id_to_token_map_py
+
+        words = [vocab_map[t] for t in tokens]
+
+        sentence = ' '.join(words)
+
+        return sentence
+
+    def value(self) -> float:
+        path = self.file_path or tempfile.mktemp()
+        with open(path, "w+") as writer:
+            writer.write("\n".join(str(p) for p in self.predicted))
+        return 1.0
 
 
 def main():
@@ -124,6 +159,10 @@ def main():
     model = tx.modules.BERTClassifier(
         pretrained_model_name=args.pretrained_model_name,
         hparams=config_downstream)
+    vocab_file = os.path.join(
+        model._encoder.pretrained_model_dir,  # pylint: disable=W0212
+        "vocab.txt")
+    vocab = tx.data.Vocab(vocab_file)
     model = ModelWrapper(model=model)
 
     num_train_steps = int(num_train_data / config_data.train_batch_size *
@@ -163,14 +202,12 @@ def main():
     test_dataset = tx.data.RecordData(hparams=config_data.test_hparam,
                                       device=device)
 
-    iterator = tx.data.DataIterator(
-        {"train": train_dataset, "eval": eval_dataset, "test": test_dataset}
-    )
-
     batching_strategy = tx.data.TokenCountBatchingStrategy(
         max_tokens=config_data.max_batch_tokens)
 
     output_dir = Path(args.output_dir)
+    valid_metric = metric.Accuracy(pred_name="preds", label_name="label_ids")
+
     executor = Executor(
         model=model,
         train_data=train_dataset,
@@ -191,11 +228,21 @@ def main():
                    "({progress}%, {speed}), lr = {lr:.3e}, loss = {loss:.3f}",
         checkpoint_dir=args.output_dir,
         save_every=cond.validation(better=True),
+        valid_metrics=[valid_metric, ("loss", metric.Average())],
+        test_mode='predict',
+        test_metrics=[FileWriterMetric(vocab, output_dir / "test.output")],
         max_to_keep=1,
         show_live_progress=True,
     )
 
-    executor.train()
+    if args.checkpoint is not None:
+        executor.load(args.checkpoint)
+
+    if args.do_train:
+        executor.train()
+
+    if args.do_test:
+        executor.test()
 
 
 if __name__ == "__main__":
