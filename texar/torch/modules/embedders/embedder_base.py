@@ -92,9 +92,6 @@ class EmbedderBase(ModuleBase):
             "name": "embedder"
         }
 
-    def forward(self, *args, **kwargs):
-        raise NotImplementedError
-
     @property
     def num_embeds(self) -> int:
         r"""The number of embedding elements.
@@ -144,10 +141,6 @@ class EmbeddingDropout(ModuleBase):
         return input_tensor * mask
 
     @property
-    def output_size(self) -> int:
-        r"""The final dimension(s) of :meth:`forward` output tensor(s).
-
-        Here final dimension is ``1``, because here output tensor size equals
-        to the input tensor size.
-        """
-        return 1
+    def output_size(self):
+        raise ValueError("'output_size' can not be calculated "
+                         "because it is equal to the input size.")

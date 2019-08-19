@@ -59,15 +59,14 @@ class PositionEmbedder(EmbedderBase):
     .. document private functions
     """
 
-    def __init__(self, init_value: Optional[torch.Tensor] = None,
-                 position_size: Optional[int] = None, hparams=None):
+    def __init__(self, position_size: Optional[int] = None,
+                 init_value: Optional[torch.Tensor] = None, hparams=None):
 
         if init_value is None and position_size is None:
             raise ValueError(
                 "Either `init_value` or `position_size` is required.")
 
-        EmbedderBase.__init__(self, init_value=init_value,
-                              num_embeds=position_size, hparams=hparams)
+        super().__init__(position_size, init_value, hparams=hparams)
 
         self._position_size = position_size
         if position_size is None:
@@ -198,6 +197,11 @@ class PositionEmbedder(EmbedderBase):
 
     @property
     def output_size(self) -> int:
+        r"""The feature size of :meth:`forward` output. If the :attr:`dim`
+        hyperparameter is a ``list`` or ``tuple``, the feature size
+        equals its final dimension; otherwise, if :attr:`dim` is an
+        ``int``, the feature size equals :attr:`dim`.
+        """
         if isinstance(self._dim, (list, tuple)):
             return self._dim[-1]
         else:
@@ -233,6 +237,8 @@ class SinusoidsPositionEmbedder(EmbedderBase):
 
     .. document private functions
     """
+    signal: torch.Tensor
+    inv_timescales: torch.Tensor
 
     def __init__(self, position_size: Optional[int] = None, hparams=None):
         super().__init__(hparams=hparams)
@@ -364,4 +370,13 @@ class SinusoidsPositionEmbedder(EmbedderBase):
 
     @property
     def output_size(self) -> int:
-        return self._dim
+        r"""The feature size of :meth:`forward` output. If the :attr:`dim`
+        hyperparameter is a ``list`` or ``tuple``, the feature size
+        equals its final dimension; otherwise, if :attr:`dim` is an
+        ``int``, the feature size equals :attr:`dim`.
+        """
+        if isinstance(self._dim, (list, tuple)):
+            dim = self._dim[-1]
+        else:
+            dim = self._dim
+        return dim

@@ -24,6 +24,7 @@ from texar.torch.core.layers import get_initializer
 from texar.torch.hyperparams import HParams
 from texar.torch.modules.classifiers.classifier_base import ClassifierBase
 from texar.torch.modules.encoders.gpt2_encoder import GPT2Encoder
+from texar.torch.modules.pretrained.pretrained_gpt2 import PretrainedGPT2Mixin
 from texar.torch.utils.utils import dict_fetch
 
 __all__ = [
@@ -31,7 +32,7 @@ __all__ = [
 ]
 
 
-class GPT2Classifier(ClassifierBase):
+class GPT2Classifier(ClassifierBase, PretrainedGPT2Mixin):
     r"""Classifier based on GPT2 modules.
 
     This is a combination of the
@@ -43,10 +44,11 @@ class GPT2Classifier(ClassifierBase):
     :class:`~texar.torch.modules.GPT2Encoder`.
 
     Args:
-        pretrained_model_name (optional): a str with the name
-            of a pre-trained model to load selected in the list of:
-            `117M`, `345M`. If `None`, will use the model name in
-            :attr:`hparams`.
+        pretrained_model_name (optional): a `str`, the name
+            of pre-trained model (e.g., ``117M``). Please refer to
+            :class:`~texar.torch.modules.pretrained.PretrainedGPT2Mixin` for
+            all supported models.
+            If `None`, the model name in :attr:`hparams` is used.
         cache_dir (optional): the path to a folder in which the
             pre-trained models will be cached. If `None` (default),
             a default directory will be used.
@@ -210,7 +212,7 @@ class GPT2Classifier(ClassifierBase):
 
                 - If ``num_classes`` == 1, ``logits`` and ``pred`` are of both
                   shape ``[batch_size]``.
-                - If ``num_classes`` >1, ``logits`` is of shape
+                - If ``num_classes`` > 1, ``logits`` is of shape
                   ``[batch_size, num_classes]`` and ``pred`` is of shape
                   ``[batch_size]``.
 
@@ -269,15 +271,19 @@ class GPT2Classifier(ClassifierBase):
 
     @property
     def output_size(self) -> int:
-        r"""The final dimension(s) of :meth:`forward` output tensor(s).
-
-        Here output is :attr:`logits`. The final dimension equals to ``1``
-        when output final dimension is only determined by input.
+        r"""The feature size of :meth:`forward` output :attr:`logits`.
+        If :attr:`logits` size is only determined by input
+        (i.e. if ``num_classes`` == 1), the feature size is equal to ``-1``.
+        Otherwise it is equal to last dimension value of :attr:`logits` size.
         """
-        if self._hparams.num_classes > 1:
+        if self._hparams.num_classes == 1:
+            logit_dim = -1
+        elif self._hparams.num_classes > 1:
             logit_dim = self._hparams.num_classes
-        elif self._hparams.num_classes == 1:
-            logit_dim = 1
+        elif self._hparams.clas_strategy == 'all_time':
+            logit_dim = (self._encoder.output_size *
+                         self._hparams.max_seq_length)
         else:
-            logit_dim = self._hparams.dim
+            logit_dim = self._encoder.output_size
+
         return logit_dim

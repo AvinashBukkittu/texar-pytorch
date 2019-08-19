@@ -24,6 +24,7 @@ from texar.torch.core.layers import get_initializer
 from texar.torch.hyperparams import HParams
 from texar.torch.modules.classifiers.classifier_base import ClassifierBase
 from texar.torch.modules.encoders.bert_encoders import BERTEncoder
+from texar.torch.modules.pretrained.pretrained_bert import PretrainedBERTMixin
 from texar.torch.utils.utils import dict_fetch
 
 __all__ = [
@@ -31,7 +32,7 @@ __all__ = [
 ]
 
 
-class BERTClassifier(ClassifierBase):
+class BERTClassifier(ClassifierBase, PretrainedBERTMixin):
     r"""Classifier based on BERT modules.
 
     This is a combination of the
@@ -43,12 +44,12 @@ class BERTClassifier(ClassifierBase):
     :class:`~texar.torch.modules.BERTEncoder`.
 
     Args:
-        pretrained_model_name (optional): a str with the name
-            of a pre-trained model to load selected in the list of:
-            `bert-base-uncased`, `bert-large-uncased`, `bert-base-cased`,
-            `bert-large-cased`, `bert-base-multilingual-uncased`,
-            `bert-base-multilingual-cased`, `bert-base-chinese`.
-            If `None`, will use the model name in :attr:`hparams`.
+        pretrained_model_name (optional): a `str`, the name
+            of pre-trained model (e.g., ``bert-base-uncased``). Please refer to
+            :class:`~texar.torch.modules.pretrained.PretrainedBERTMixin` for
+            all supported models (including the standard BERT models and
+            variants like RoBERTa).
+            If `None`, the model name in :attr:`hparams` is used.
         cache_dir (optional): the path to a folder in which the
             pre-trained models will be cached. If `None` (default),
             a default directory will be used.
@@ -273,15 +274,21 @@ class BERTClassifier(ClassifierBase):
 
     @property
     def output_size(self) -> int:
-        r"""The final dimension(s) of :meth:`forward` output tensor(s).
-
-        Here output is :attr:`logits`. The final dimension equals to ``1``
-        when output final dimension is only determined by input.
+        r"""The feature size of :meth:`forward` output :attr:`logits`.
+        If :attr:`logits` size is only determined by input
+        (i.e. if ``num_classes`` == 1), the feature size is equal to ``-1``.
+        Otherwise it is equal to last dimension value of :attr:`logits` size.
         """
-        if self._hparams.num_classes > 1:
+        if self._hparams.num_classes == 1:
+            logit_dim = -1
+        elif self._hparams.num_classes > 1:
             logit_dim = self._hparams.num_classes
-        elif self._hparams.num_classes == 1:
-            logit_dim = 1
-        else:
+        elif self._hparams.clas_strategy == 'all_time':
+            logit_dim = (self._encoder.output_size *
+                         self._hparams.max_seq_length)
+        elif self._hparams.clas_strategy == 'cls_time':
+            logit_dim = self._encoder.output_size
+        elif self._hparams.clas_strategy == 'time_wise':
             logit_dim = self._hparams.encoder.dim
+
         return logit_dim
